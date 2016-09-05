@@ -1,0 +1,4 @@
+Django==1.9.6
+django-ses==0.7.1
+requests==2.10.0
+IMDbPY==5.0

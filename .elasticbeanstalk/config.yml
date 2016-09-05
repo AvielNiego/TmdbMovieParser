@@ -1,0 +1,11 @@
+branch-defaults:
+  default:
+    environment: tmdbMovieParser-env
+    group_suffix: null
+global:
+  application_name: tmdb_movie_parser
+  default_ec2_keyname: def-keypair
+  default_platform: python2.7
+  default_region: us-west-2
+  profile: eb-cli
+  sc: null
