@@ -1,12 +1,11 @@
 # -*- coding: cp1255 -*-
 import datetime
-import itertools
 import re
 
 import requests
 from imdb import IMDb
 
-GOOGLE_SUGGESTIONS_URL = "http://suggestqueries.google.com/complete/search?client=firefox&q="
+from possible_names_generator import PossibleNamesGenerator
 
 API_KEY = '546a1e3c91bafcbaccfa4fcae533738c'
 
@@ -16,53 +15,24 @@ TMDB_API_MOVIE_DETAILS_URL = 'http://api.themoviedb.org/3/movie/'
 
 YOUTUBE_TRAILER_PATH = 'https://www.youtube.com/watch?v='
 FAKE_TIME = datetime.datetime(1, 1, 1)
-BAD_WORDS = {'3D', u'עברית', u'רוסית', u'תלת', u'מדובב'}
 
 
 # noinspection PyMethodMayBeStatic
 class TmdbMovieParser:
-    def __init__(self):
-        pass
+    def __init__(self, movie_name, year=None):
+        self._year = year
+        self._movie_name = ""
+        self.set_movie_name(movie_name)
 
-    def get_info(self, movie_name):
-        for possible_movie_name, show_type in self._generate_possible_movie_names(movie_name):
+    def set_movie_name(self, movie_name):
+        self._movie_name = self._remove_extra_spaces(movie_name)
+
+    def get_info(self):
+        for possible_movie_name, show_type in PossibleNamesGenerator(self._movie_name).generate():
             tmdb_data = self._get_movie_details(possible_movie_name)
             if tmdb_data:
                 tmdb_data['show_type'] = show_type
                 return tmdb_data
-
-    def _generate_possible_movie_names(self, movie_name):
-        yield (movie_name, 'Normal')
-        for bad_word_comb in self._get_bad_words_combinations(movie_name):
-            yield (self._clear_bad_words(bad_word_comb, movie_name), bad_word_comb)
-
-        for bad_word_comb in self._get_bad_words_combinations(movie_name):
-            google_suggest = self._google_suggest(self._clear_bad_words(bad_word_comb, movie_name))
-            if google_suggest:
-                for suggest in google_suggest:
-                    yield (suggest, 'Normal')
-        google_suggest = self._google_suggest(movie_name)
-        if google_suggest:
-            for suggest in google_suggest:
-                yield (suggest, 'Normal')
-
-    def _google_suggest(self, name):
-        try:
-            return requests.get(GOOGLE_SUGGESTIONS_URL + name).json()[1]
-        except IndexError:
-            return None
-
-    def _clear_bad_words(self, bad_word_comb, movie_name):
-        return reduce(lambda m, b: m.replace(b, ''), bad_word_comb, movie_name)
-
-    def _get_bad_words_combinations(self, movie_name):
-        bad_words_in_movie = self._get_bad_words_in_movie_name(movie_name)
-        return [c for i in range(len(bad_words_in_movie)) for c in itertools.combinations(bad_words_in_movie, i + 1)]
-
-    def _get_bad_words_in_movie_name(self, movie_name):
-        movie_name_words = movie_name.split()
-        return [movie_word for movie_word in movie_name_words for bad_word in BAD_WORDS
-                if bad_word in movie_word]
 
     def _get_movie_details(self, movie_name):
         movie_tmdb_id = self._get_tmdb_movie_id_search_result(movie_name)
@@ -85,10 +55,16 @@ class TmdbMovieParser:
         return self._get_most_relevant_movie_id_from_tmdb_result(tmdb_result) if tmdb_result else None
 
     def _get_most_relevant_movie_id_from_tmdb_result(self, tmdb_search_result):
-        most_relevant_movie = max(tmdb_search_result, key=self._get_release_date_from_tmdb_result)
-        if self._get_release_date_from_tmdb_result(most_relevant_movie).year < datetime.date.today().year - 2:
-            return None
-        return most_relevant_movie['id']
+        most_relevants = filter(lambda r: self._get_release_date_from_tmdb_result(r).year == self._year, tmdb_search_result)
+        if most_relevants:
+            return most_relevants[0]['id']
+
+        most_relevant = max(tmdb_search_result, key=self._get_release_date_from_tmdb_result)
+        if self._is_relevant_release_date_movie(most_relevant):
+            return most_relevant['id']
+
+    def _is_relevant_release_date_movie(self, tmdb_result):
+        return self._get_release_date_from_tmdb_result(tmdb_result).year > datetime.date.today().year - 2
 
     def _get_release_date_from_tmdb_result(self, tmdb_result):
         if tmdb_result.get('release_date') != '':
